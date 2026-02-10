@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="en-us">
 <head>
 <meta charset="utf-8"/>
@@ -30,7 +29,6 @@
             height: 100%;
         }
     </style>
-<!-- Additional head modules -->
 </head>
 <body class="dark">
 <div id="unity-container" class="unity-desktop">
@@ -45,7 +43,7 @@
 <div class="spinner"></div>
 </div>
 </div>
-<!-- Additional body modules -->
+
 <script>
         const hideFullScreenButton = "";
         const buildUrl = "Build";
@@ -54,13 +52,13 @@
             dataUrl: buildUrl + "/build.data.unityweb",
             frameworkUrl: buildUrl + "/build.framework.js.unityweb",
             codeUrl: buildUrl + "/build.wasm.unityweb",
-        streamingAssetsUrl: "StreamingAssets",
+            streamingAssetsUrl: "StreamingAssets",
             companyName: "AutismDev",
             productName: "Gravity Mod",
             productVersion: "1.0.0.0"
         };
 
-       const container = document.querySelector("#unity-container");
+        const container = document.querySelector("#unity-container");
         const canvas = document.querySelector("#unity-canvas");
         const loadingCover = document.querySelector("#loading-cover");
         const progressBarEmpty = document.querySelector("#unity-progress-bar-empty");
@@ -86,9 +84,8 @@
 
         let StartUnityInstance;
         let myGameInstance;
-        let ysdk = null; // Yandex SDK pasif
+        let ysdk = null; 
 
-        // Varsayılan değerlerle environmentData, cloudSaves, paymentsData ve playerData gibi değişkenlerin tanımlanması
         let environmentData = {
             language: "en",
             domain: "default_domain",
@@ -103,85 +100,76 @@
             promptCanShow: false,
             reviewCanShow: false,
             platform: navigator.platform,
-            browser: (function() {
-                let userAgent = navigator.userAgent;
-                if (userAgent.includes("YaBrowser")) return "Yandex";
-                if (userAgent.includes("OPR") || userAgent.includes("Opera")) return "Opera";
-                if (userAgent.includes("Firefox")) return "Firefox";
-                if (userAgent.includes("MSIE") || userAgent.includes("Trident")) return "IE";
-                if (userAgent.includes("Edge")) return "Edge";
-                if (userAgent.includes("Chrome")) return "Chrome";
-                if (userAgent.includes("Safari")) return "Safari";
-                return "Other";
-            })()
+            browser: "Chrome"
         };
         
         let cloudSaves = 'noData';
         let paymentsData = 'none';
-        let playerData = 'noData'; // Varsayılan playerData tanımı
+        let playerData = 'noData'; 
         let player = null;
         let payments = null;
         let initGame = false;
         let nowFullAdOpen = false;
 
-        // Eksik olabilecek tüm SDK işlevlerini varsayılan olarak tanımla
-        function GetPayments() { console.warn("GetPayments is not implemented"); return Promise.resolve("none"); }
-        function SaveCloud() { console.warn("SaveCloud is not implemented"); }
-        function LoadCloud() { console.warn("LoadCloud is not implemented"); return Promise.resolve("noData"); }
-        function InitPlayer() { console.warn("InitPlayer is not implemented"); return Promise.resolve("noData"); }
-        function FullAdShow() { console.warn("FullAdShow is not implemented"); }
-        function RewardedShow() { console.warn("RewardedShow is not implemented"); }
-        function StickyAdActivity() { console.warn("StickyAdActivity is not implemented"); }
-        function Review() { console.warn("Review is not implemented"); }
-        function PromptShow() { console.warn("PromptShow is not implemented"); }
-        function InitLeaderboards() { console.warn("InitLeaderboards is not implemented"); }
-        function GetLeaderboardScores() { console.warn("GetLeaderboardScores is not implemented"); }
-        function SetLeaderboardScores() { console.warn("SetLeaderboardScores is not implemented"); }
-        function ConsumePurchase() { console.warn("ConsumePurchase is not implemented"); }
-        function ConsumePurchases() { console.warn("ConsumePurchases is not implemented"); } // Varsayılan tanım eklendi
+        // --- AD BLOCKER / BYPASS LOGIC ---
+        function FullAdShow() { 
+            console.log("Full ad blocked. Resuming..."); 
+            // Tell Unity the ad closed immediately
+            if (myGameInstance) myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
+        }
 
-        // Hata yakalama ile Unity başlatma işlemi
+        function RewardedShow(id) { 
+            console.log("Rewarded ad bypassed. Giving reward for ID:", id); 
+            // Tell Unity the ad was watched successfully
+            if (myGameInstance) myGameInstance.SendMessage('YandexGame', 'RewardIndexed', id);
+        }
+
+        function GetPayments() { return Promise.resolve("none"); }
+        function SaveCloud() { }
+        function LoadCloud() { return Promise.resolve("noData"); }
+        function InitPlayer() { return Promise.resolve("noData"); }
+        function StickyAdActivity() { }
+        function Review() { }
+        function PromptShow() { }
+        function InitLeaderboards() { }
+        function GetLeaderboardScores() { }
+        function SetLeaderboardScores() { }
+        function ConsumePurchase() { }
+        function ConsumePurchases() { }
+
+        // --- INITIALIZATION ---
         try {
             const script = document.createElement("script");
             script.src = loaderUrl;
             script.onload = () => {
-                StartUnityInstance = function () {
-                    createUnityInstance(canvas, config, (progress) => {
-                        spinner.style.display = "none";
-                        progressBarEmpty.style.display = "";
-                        progressBarFull.style.width = `${100 * progress}%`;
-                    }).then((unityInstance) => {
-                        myGameInstance = unityInstance;
-                        loadingCover.style.display = "none";
-                    }).catch((message) => {
-                        console.error("Unity yükleme hatası:", message);
-                    });
-                };
-                StartUnityInstance();
+                createUnityInstance(canvas, config, (progress) => {
+                    spinner.style.display = "none";
+                    progressBarEmpty.style.display = "";
+                    progressBarFull.style.width = `${100 * progress}%`;
+                }).then((unityInstance) => {
+                    myGameInstance = unityInstance;
+                    loadingCover.style.display = "none";
+                }).catch((message) => {
+                    console.error("Unity Error:", message);
+                });
             };
             document.body.appendChild(script);
         } catch (error) {
-            console.error("Başlatma sırasında hata:", error);
+            console.error("Critical Start Error:", error);
         }
 
         function InitGame() {
             try {
-                console.log('Init Game Success');
+                console.log('Gravity Mod Loaded - Ads Stripped');
                 initGame = true;
-                if (nowFullAdOpen === true && myGameInstance != null) {
-                    myGameInstance.SendMessage('YandexGame', 'OpenFullAd');
-                }
             } catch (error) {
-                console.error("InitGame sırasında hata:", error);
+                console.error("InitGame error:", error);
             }
         }
 
-        // Hata oluştuğunda oyuna devam etmek için tüm hataları global olarak yakalayan yapı
         window.addEventListener("unhandledrejection", function(event) {
-            console.warn("Hata es geçildi:", event.reason);
             event.preventDefault();
         });
     </script>
 </body>
 </html>
-
