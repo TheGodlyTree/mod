@@ -121,4 +121,63 @@
         let myGameInstance = null;
 
         // --- THE "AD-SKIPPER" LOGIC ---
-        // This stops the game from freezing by telling Unity the
+        // This stops the game from freezing by telling Unity the ad ended immediately
+        function FullAdShow() { 
+            console.log("Ad Blocked: Telling Unity to resume."); 
+            if (myGameInstance) {
+                setTimeout(() => {
+                    myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
+                }, 150); // 150ms delay prevents the engine from locking up
+            }
+        }
+
+        function RewardedShow(id) { 
+            console.log("Reward Ad Blocked: Unlocking reward ID " + id); 
+            if (myGameInstance) {
+                setTimeout(() => {
+                    myGameInstance.SendMessage('YandexGame', 'RewardIndexed', id);
+                    myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
+                }, 150);
+            }
+        }
+
+        // --- SDK DUMMY REPLACEMENTS ---
+        let environmentData = { language: "en", isDesktop: true, browser: "Chrome" };
+        let cloudSaves = 'noData', paymentsData = 'none', playerData = 'noData';
+        function GetPayments() { return Promise.resolve("none"); }
+        function SaveCloud() { }
+        function LoadCloud() { return Promise.resolve("noData"); }
+        function InitPlayer() { return Promise.resolve("noData"); }
+        function StickyAdActivity() { }
+        function Review() { }
+        function PromptShow() { }
+        function InitLeaderboards() { }
+
+        // --- BOOTING UNITY ---
+        const script = document.createElement("script");
+        script.src = loaderUrl;
+        script.onload = () => {
+            createUnityInstance(canvas, config, (progress) => {
+                spinner.style.display = "none";
+                progressBarEmpty.style.display = "block";
+                progressBarFull.style.width = `${100 * progress}%`;
+            }).then((unityInstance) => {
+                myGameInstance = unityInstance;
+                loadingCover.style.display = "none";
+            }).catch((message) => {
+                console.error("Unity Error: ", message);
+            });
+        };
+        document.body.appendChild(script);
+
+        function InitGame() {
+            console.log('Gravity Mod Loaded Successfully.');
+        }
+
+        // Lock context menu
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        // Handle rejection errors silently
+        window.addEventListener("unhandledrejection", e => e.preventDefault());
+    </script>
+</body>
+</html>
