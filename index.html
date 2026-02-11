@@ -19,7 +19,7 @@
     </style>
 </head>
 <body class="dark">
-    <div id="version-tag">v 0.5</div>
+    <div id="version-tag">v 0.6</div>
     <div id="unity-container" class="unity-desktop">
         <canvas id="unity-canvas" tabindex="-1"></canvas>
     </div>
@@ -34,58 +34,55 @@
     </div>
 
     <script>
-        // --- v 0.5: THE MASTER HANDSHAKE ---
+        // --- v 0.6: GLOBAL FUNCTION MAPPING ---
         var myGameInstance = null;
 
-        // Ensure these exist globally before the loader even touches them
+        // Mock data to prevent "undefined" crashes
         window.ysdk = null;
-        window.player = null;
+        window.environmentData = { language: "en", domain: "com", deviceType: "desktop", isMobile: false };
         window.cloudSaves = 'noData';
         window.playerData = 'noData';
         window.paymentsData = 'none';
-        window.environmentData = { 
-            language: "en", domain: "com", deviceType: "desktop", 
-            isMobile: false, isDesktop: true, payload: null 
-        };
 
-        // Comprehensive Fake SDK
-        window.YaGames = {
-            init: function() {
-                return Promise.resolve({
-                    adv: {
-                        showFullscreenAdv: (c) => { if(c.callbacks && c.callbacks.onClose) c.callbacks.onClose(true); },
-                        showRewardedVideo: (c) => { if(c.callbacks) { c.callbacks.onOpen(); c.callbacks.onReward(); c.callbacks.onClose(); } }
-                    },
-                    getPlayer: () => Promise.resolve({ 
-                        getName: () => "User", getPhoto: () => "", 
-                        getData: () => Promise.resolve({}), setData: () => Promise.resolve() 
-                    }),
-                    getEnvironment: () => window.environmentData,
-                    getPayments: () => Promise.reject("NA")
-                });
-            }
-        };
-
-        // The "Anti-Freeze" Resume Loop
-        function ForceUnfreeze() {
-            if (myGameInstance) {
-                myGameInstance.SendMessage('YandexGame', 'OnCloseVast');
-                myGameInstance.SendMessage('YandexGame', 'OnCloseFullAd');
-                myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
-                myGameInstance.SendMessage('YandexGame', 'Resume');
-            }
-        }
-
-        // Pulse the "Ready" signal every second until game is active
-        function MasterHandshake() {
+        // THE FIX: Attach InitGame to the window so Unity can see it
+        window.InitGame = function() {
+            console.log("Unity called InitGame. Responding...");
             if (myGameInstance) {
                 myGameInstance.SendMessage('YandexGame', 'SetEnvironmentData', JSON.stringify(window.environmentData));
                 myGameInstance.SendMessage('YandexGame', 'Initialized');
-                console.log("Handshake pulse sent...");
             }
-        }
+        };
 
-        // Loader Config
+        // Backup functions in case the mod uses different naming conventions
+        window.InitGame_js = window.InitGame;
+        window.initGame = window.InitGame;
+
+        // AD BYPASS: Forces unfreeze when the game calls for ads
+        window.FullAdShow = function() {
+            console.log("Ad bypass triggered.");
+            if (myGameInstance) {
+                myGameInstance.SendMessage('YandexGame', 'OnCloseVast');
+                myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
+                myGameInstance.SendMessage('YandexGame', 'Resume');
+            }
+        };
+
+        window.RewardedShow = function(id) {
+            if (myGameInstance) myGameInstance.SendMessage('YandexGame', 'Reward', id || 1);
+            window.FullAdShow();
+        };
+
+        // Required API stubs
+        window.GetPayments = () => Promise.resolve("none");
+        window.SaveCloud = () => {};
+        window.LoadCloud = () => Promise.resolve("noData");
+        window.InitPlayer = () => Promise.resolve("noData");
+        window.StickyAdActivity = () => {};
+        window.Review = () => {};
+        window.PromptShow = () => {};
+        window.InitLeaderboards = () => {};
+
+        // Unity Loader
         const buildUrl = "Build";
         const loaderUrl = buildUrl + "/build.loader.js";
         const config = {
@@ -111,25 +108,12 @@
                 myGameInstance = unityInstance;
                 loadingCover.style.display = "none";
                 
-                // Start the pulse and the anti-freeze loop
-                setInterval(MasterHandshake, 1000);
-                setInterval(ForceUnfreeze, 2000);
+                // Final safety: if Unity missed the call, we pulse it
+                setInterval(() => { if(window.InitGame) window.InitGame(); }, 2000);
             });
         };
         document.body.appendChild(script);
 
-        // Required API stubs
-        function FullAdShow() { ForceUnfreeze(); }
-        function RewardedShow(id) { if(myGameInstance) myGameInstance.SendMessage('YandexGame', 'Reward', id || 1); ForceUnfreeze(); }
-        function GetPayments() { return Promise.resolve("none"); }
-        function SaveCloud() {}
-        function LoadCloud() { return Promise.resolve("noData"); }
-        function InitPlayer() { return Promise.resolve("noData"); }
-        function StickyAdActivity() {}
-        function Review() {}
-        function PromptShow() {}
-        function InitLeaderboards() {}
-        
         window.addEventListener("unhandledrejection", (e) => e.preventDefault());
         document.addEventListener('contextmenu', e => e.preventDefault());
     </script>
