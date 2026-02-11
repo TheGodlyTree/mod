@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="./style.css"/>
 
     <style>
-        /* Remove focus outline and margins */
+        /* Prevent UI freezing and remove focus outlines */
         canvas:focus {
             outline: none;
         }
@@ -33,7 +33,7 @@
     </div>
     <div id="loading-cover">
         <div id="unity-loading-bar">
-            <div id="unity-logo"><img src="gp.png"/></div>
+            <div id="unity-logo"><img src="newicon.png"/></div>
             <div id="unity-progress-bar-empty" style="display: none;">
                 <div id="unity-progress-bar-full"></div>
             </div>
@@ -66,8 +66,6 @@
         }
 
         loadingCover.style.background = "url('background.gif') center / cover";
-
-        // Prevent right-click menu
         document.addEventListener('contextmenu', event => event.preventDefault());
 
         function FocusGame() {
@@ -78,30 +76,53 @@
         window.addEventListener('pointerdown', FocusGame);
         window.addEventListener('touchstart', FocusGame);
 
+        // --- EMULATED SDK DATA (Prevents loading hangs) ---
         let myGameInstance = null;
-
-        // --- ANTI-FREEZE & AD REMOVAL BYPASS ---
-        // These functions spoof the SDK responses so the game never waits.
+        let ysdk = null; 
+        let environmentData = {
+            language: "en",
+            domain: "default_domain",
+            deviceType: "desktop",
+            isMobile: false,
+            isDesktop: true,
+            isTablet: false,
+            isTV: false,
+            appID: "default_app_id",
+            browserLang: navigator.language || "en",
+            payload: null,
+            promptCanShow: false,
+            reviewCanShow: false,
+            platform: navigator.platform,
+            browser: "Chrome"
+        };
         
+        let cloudSaves = 'noData';
+        let paymentsData = 'none';
+        let playerData = 'noData';
+        let player = null;
+        let payments = null;
+        let initGame = true;
+        let nowFullAdOpen = false;
+
+        // --- AD BYPASS LOGIC (Removes Ads) ---
         function FullAdShow() { 
-            console.log("Interstitial ad bypassed.");
-            if(myGameInstance) {
-                myGameInstance.SendMessage('YandexGame', 'OpenFullAd'); // Tell game it started
-                setTimeout(() => {
-                    myGameInstance.SendMessage('YandexGame', 'CloseFullAd'); // Tell game it finished
-                }, 100);
+            console.log("Interstitial Bypass");
+            if (myGameInstance) {
+                myGameInstance.SendMessage('YandexGame', 'OpenFullAd');
+                setTimeout(() => { myGameInstance.SendMessage('YandexGame', 'CloseFullAd'); }, 100);
             }
         }
 
         function RewardedShow() { 
-            console.log("Rewarded ad bypassed. Granting reward.");
-            if(myGameInstance) {
+            console.log("Reward Bypass");
+            if (myGameInstance) {
                 myGameInstance.SendMessage('YandexGame', 'RewardReceived', 1);
                 myGameInstance.SendMessage('YandexGame', 'CloseRewardedAd');
             }
         }
 
-        // Dummy functions to prevent errors
+        // Global Stubs to prevent "is not a function" errors
+        function GetPayments() { return Promise.resolve("none"); }
         function SaveCloud() {}
         function LoadCloud() { return Promise.resolve("noData"); }
         function InitPlayer() { return Promise.resolve("noData"); }
@@ -113,9 +134,8 @@
         function SetLeaderboardScores() {}
         function ConsumePurchase() {}
         function ConsumePurchases() {}
-        function GetPayments() { return Promise.resolve("none"); }
 
-        // Start Unity
+        // --- UNITY INITIALIZATION ---
         const script = document.createElement("script");
         script.src = loaderUrl;
         script.onload = () => {
@@ -126,17 +146,25 @@
             }).then((unityInstance) => {
                 myGameInstance = unityInstance;
                 loadingCover.style.display = "none";
+                
+                // Signal Unity that the "SDK" is ready to proceed
+                setTimeout(() => {
+                    if (myGameInstance) {
+                        myGameInstance.SendMessage('YandexGame', 'OnInitGame');
+                    }
+                }, 500);
             }).catch((message) => {
-                console.error("Unity Load Error:", message);
+                console.error("Unity Start Error:", message);
             });
         };
         document.body.appendChild(script);
 
         function InitGame() {
-            console.log('Ads disabled, game instance active.');
+            initGame = true;
+            console.log("Game Handshake Complete");
         }
 
-        // Global error handler to prevent crashing on missing SDK variables
+        // Final safety net for errors
         window.addEventListener("unhandledrejection", (event) => event.preventDefault());
     </script>
 </body>
