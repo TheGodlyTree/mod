@@ -5,44 +5,47 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
     <link rel="stylesheet" href="./style.css"/>
+
     <style>
-        canvas:focus { outline: none; }
-        html, body { padding: 0; margin: 0; overflow: hidden; height: 100%; user-select: none; -webkit-tap-highlight-color: rgba(0,0,0,0); }
-        
-        /* The Manual Resume Button Style */
-        #resume-btn {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            z-index: 999;
-            padding: 10px 15px;
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            border: 1px solid #444;
-            border-radius: 5px;
-            cursor: pointer;
-            font-family: sans-serif;
-            font-size: 12px;
-            display: none; /* Hidden by default, shows after load */
+        /* Убираем выделение по нажатию клавиш */
+        canvas:focus {
+            outline: none;
         }
-        #resume-btn:hover { background: #333; }
+
+        html, body {
+            /* Убираем отступы */
+            padding: 0;
+            margin: 0;
+            /* Отключаем скролл и лонгтап на IOS */
+            overflow: hidden;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: rgba(0,0,0,0);
+            /* Ставим высоту на 100% */
+            height: 100%;
+        }
     </style>
 </head>
 <body class="dark">
-    <button id="resume-btn" onclick="ForceResume()">RESUME GAME (Skip Freeze)</button>
-
     <div id="unity-container" class="unity-desktop">
         <canvas id="unity-canvas" tabindex="-1"></canvas>
     </div>
-    <div id="loading-cover">
+    <div id="loading-cover" style="display:none;">
         <div id="unity-loading-bar">
             <div id="unity-logo"><img src="gp.png"/></div>
-            <div id="unity-progress-bar-empty" style="display: none;"><div id="unity-progress-bar-full"></div></div>
+            <div id="unity-progress-bar-empty" style="display: none;">
+                <div id="unity-progress-bar-full"></div>
+            </div>
             <div class="spinner"></div>
         </div>
     </div>
 
     <script>
+        const hideFullScreenButton = "";
         const buildUrl = "Build";
         const loaderUrl = buildUrl + "/build.loader.js";
         const config = {
@@ -55,55 +58,80 @@
             productVersion: "1.0.0.0"
         };
 
+        const container = document.querySelector("#unity-container");
         const canvas = document.querySelector("#unity-canvas");
         const loadingCover = document.querySelector("#loading-cover");
+        const progressBarEmpty = document.querySelector("#unity-progress-bar-empty");
         const progressBarFull = document.querySelector("#unity-progress-bar-full");
-        const resumeBtn = document.querySelector("#resume-btn");
+        const spinner = document.querySelector('.spinner');
 
-        let myGameInstance = null;
-
-        // --- MANUAL OVERRIDE FUNCTION ---
-        function ForceResume() {
-            console.log("Manual skip triggered.");
-            if (myGameInstance) {
-                myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
-                myGameInstance.SendMessage('YandexGame', 'CloseRewardedAd');
-                // Standard Unity volume resume call
-                myGameInstance.SendMessage('YandexGame', 'OnWindowFocus', 'true');
-            }
+        if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+            container.className = "unity-mobile";
         }
 
-        // --- AUTO AD-SKIP LOGIC ---
-        function FullAdShow() { 
-            if (myGameInstance) {
-                myGameInstance.SendMessage('YandexGame', 'OpenFullAd'); 
-                setTimeout(() => { myGameInstance.SendMessage('YandexGame', 'CloseFullAd'); }, 100); 
-            }
+        loadingCover.style.background = "url('background.gif') center / cover";
+        loadingCover.style.display = "";
+
+        document.addEventListener('contextmenu', event => event.preventDefault());
+
+        function FocusGame() {
+            window.focus();
+            canvas.focus();
         }
 
-        function RewardedShow(id) { 
-            if (myGameInstance) {
-                myGameInstance.SendMessage('YandexGame', 'OpenRewardedAd', id);
-                setTimeout(() => {
-                    myGameInstance.SendMessage('YandexGame', 'RewardReceived', id);
-                    myGameInstance.SendMessage('YandexGame', 'CloseRewardedAd');
-                }, 100);
-            }
-        }
+        window.addEventListener('pointerdown', FocusGame);
+        window.addEventListener('touchstart', FocusGame);
 
-        // SDK Emulation
+        let StartUnityInstance;
+        let myGameInstance;
+        let ysdk = null; 
+
         let environmentData = {
-            language: "en", domain: "default", deviceType: "desktop",
-            isMobile: false, isDesktop: true, isTablet: false, isTV: false,
-            appID: "1", browserLang: "en", payload: null,
-            promptCanShow: false, reviewCanShow: false, platform: "web", browser: "Chrome"
+            language: "en",
+            domain: "default_domain",
+            deviceType: "desktop",
+            isMobile: false,
+            isDesktop: true,
+            isTablet: false,
+            isTV: false,
+            appID: "default_app_id",
+            browserLang: navigator.language || "en",
+            payload: null,
+            promptCanShow: false,
+            reviewCanShow: false,
+            platform: navigator.platform,
+            browser: (function() {
+                let userAgent = navigator.userAgent;
+                if (userAgent.includes("YaBrowser")) return "Yandex";
+                if (userAgent.includes("OPR") || userAgent.includes("Opera")) return "Opera";
+                if (userAgent.includes("Firefox")) return "Firefox";
+                if (userAgent.includes("MSIE") || userAgent.includes("Trident")) return "IE";
+                if (userAgent.includes("Edge")) return "Edge";
+                if (userAgent.includes("Chrome")) return "Chrome";
+                if (userAgent.includes("Safari")) return "Safari";
+                return "Other";
+            })()
         };
         
+        let cloudSaves = 'noData';
+        let paymentsData = 'none';
+        let playerData = 'noData'; 
+        let player = null;
+        let payments = null;
+        let initGame = false;
+        let nowFullAdOpen = false; // Ads are disabled by default
+
+        // --- Ad Blocking Section ---
+        // We redefine these functions to do nothing, preventing ads from triggering.
+        function FullAdShow() { console.log("Ads: Interstitial blocked."); }
+        function RewardedShow() { console.log("Ads: Reward video blocked."); }
+        function StickyAdActivity() { console.log("Ads: Sticky banner blocked."); }
+        
+        // Maintaining stubs for other SDK functions to prevent crashes
+        function GetPayments() { return Promise.resolve("none"); }
         function SaveCloud() {}
         function LoadCloud() { return Promise.resolve("noData"); }
         function InitPlayer() { return Promise.resolve("noData"); }
-        function GetPayments() { return Promise.resolve("none"); }
-        function StickyAdActivity() {}
         function Review() {}
         function PromptShow() {}
         function InitLeaderboards() {}
@@ -112,28 +140,48 @@
         function ConsumePurchase() {}
         function ConsumePurchases() {}
 
-        const script = document.createElement("script");
-        script.src = loaderUrl;
-        script.onload = () => {
-            createUnityInstance(canvas, config, (progress) => {
-                document.querySelector(".spinner").style.display = "none";
-                document.querySelector("#unity-progress-bar-empty").style.display = "";
-                progressBarFull.style.width = `${100 * progress}%`;
-            }).then((unityInstance) => {
-                myGameInstance = unityInstance;
-                loadingCover.style.display = "none";
-                resumeBtn.style.display = "block"; // Show skip button once loaded
-                
-                setTimeout(() => {
-                    myGameInstance.SendMessage('YandexGame', 'OnInitGame');
-                }, 1000);
-            }).catch((err) => { console.error(err); });
-        };
-        document.body.appendChild(script);
+        try {
+            const script = document.createElement("script");
+            script.src = loaderUrl;
+            script.onload = () => {
+                StartUnityInstance = function () {
+                    createUnityInstance(canvas, config, (progress) => {
+                        spinner.style.display = "none";
+                        progressBarEmpty.style.display = "";
+                        progressBarFull.style.width = `${100 * progress}%`;
+                    }).then((unityInstance) => {
+                        myGameInstance = unityInstance;
+                        loadingCover.style.display = "none";
+                    }).catch((message) => {
+                        console.error("Unity loading error:", message);
+                    });
+                };
+                StartUnityInstance();
+            };
+            document.body.appendChild(script);
+        } catch (error) {
+            console.error("Initialization error:", error);
+        }
 
-        function InitGame() { console.log("Init OK"); }
-        document.addEventListener('contextmenu', e => e.preventDefault());
-        window.addEventListener("unhandledrejection", e => e.preventDefault());
+        function InitGame() {
+            try {
+                console.log('Init Game Success (Ads Disabled)');
+                initGame = true;
+                // The following logic is disabled to prevent the game from attempting 
+                // to call the "OpenFullAd" function in the C# Unity code.
+                /*
+                if (nowFullAdOpen === true && myGameInstance != null) {
+                    myGameInstance.SendMessage('YandexGame', 'OpenFullAd');
+                }
+                */
+            } catch (error) {
+                console.error("InitGame error:", error);
+            }
+        }
+
+        window.addEventListener("unhandledrejection", function(event) {
+            event.preventDefault();
+        });
     </script>
 </body>
 </html>
