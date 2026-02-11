@@ -10,7 +10,7 @@
         html, body {
             padding: 0; margin: 0; overflow: hidden;
             -webkit-touch-callout: none; -webkit-user-select: none;
-            user-select: none; height: 100%;
+            user-select: none; height: 100%; background: #000;
         }
     </style>
 </head>
@@ -18,10 +18,10 @@
     <div id="unity-container" class="unity-desktop">
         <canvas id="unity-canvas" tabindex="-1"></canvas>
     </div>
-    <div id="loading-cover" style="display:none;">
+    <div id="loading-cover">
         <div id="unity-loading-bar">
             <div id="unity-logo"><img src="gp.png"/></div>
-            <div id="unity-progress-bar-empty" style="display: none;">
+            <div id="unity-progress-bar-empty">
                 <div id="unity-progress-bar-full"></div>
             </div>
             <div class="spinner"></div>
@@ -29,6 +29,31 @@
     </div>
 
     <script>
+        // --- 1. FAKE SDK INITIALIZATION (Fixes Black Screen) ---
+        // Many Unity games hang if they don't see a 'YaGames' object
+        window.YaGames = {
+            init: function() {
+                return new Promise((resolve) => {
+                    console.log("Fake SDK Initialized");
+                    const mockLib = {
+                        adv: {
+                            showFullscreenAdv: (opts) => { opts.callbacks.onClose(true); },
+                            showRewardedVideo: (opts) => { opts.callbacks.onReward(); opts.callbacks.onClose(); }
+                        },
+                        getPlayer: () => Promise.resolve({ 
+                            getName: () => "Player", 
+                            getPhoto: () => "", 
+                            getData: () => Promise.resolve({}),
+                            setData: () => Promise.resolve()
+                        }),
+                        getPayments: () => Promise.reject("Payments Disabled"),
+                        getEnvironment: () => ({ language: "en", deviceType: "desktop" })
+                    };
+                    resolve(mockLib);
+                });
+            }
+        };
+
         const buildUrl = "Build";
         const loaderUrl = buildUrl + "/build.loader.js";
         const config = {
@@ -48,56 +73,40 @@
 
         let myGameInstance = null;
 
-        // --- THE AD-KILLER ENGINE ---
-        
-        // This function tells Unity the ad is over so it stops "loading"
-        function CloseAd() {
+        // --- 2. AD OVERRIDES ---
+        function FullAdShow() {
+            if (myGameInstance) myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
+        }
+        function RewardedShow() {
             if (myGameInstance) {
-                // We signal 'CloseFullAd' to tell Unity the interstitial is done
+                myGameInstance.SendMessage('YandexGame', 'Reward', 1);
                 myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
-                // We signal 'Reward' to tell Unity the video was watched (unlocks items)
-                myGameInstance.SendMessage('YandexGame', 'Reward', 1); 
-                console.log("Ad bypassed and rewards granted.");
             }
         }
+        function StickyAdActivity() {}
+        function InitGame() { 
+            console.log("Game Handshake Complete"); 
+            if (myGameInstance) myGameInstance.SendMessage('YandexGame', 'Initialized');
+        }
 
-        function FullAdShow() { CloseAd(); }
-        function RewardedShow() { CloseAd(); }
-        function StickyAdActivity() { /* Banners do nothing */ }
-        
-        // Prevent Yandex SDK from actually loading
-        let ysdk = null; 
-        let environmentData = { language: "en", deviceType: "desktop" };
-        
-        // Stubs for stability
-        function GetPayments() { return Promise.resolve("none"); }
-        function SaveCloud() {}
-        function LoadCloud() { return Promise.resolve("noData"); }
-        function InitPlayer() { return Promise.resolve("noData"); }
-
-        // Start Unity
+        // --- 3. UNITY LOADER ---
         const script = document.createElement("script");
         script.src = loaderUrl;
         script.onload = () => {
             createUnityInstance(canvas, config, (progress) => {
                 spinner.style.display = "none";
-                document.querySelector("#unity-progress-bar-empty").style.display = "";
                 progressBarFull.style.width = `${100 * progress}%`;
             }).then((unityInstance) => {
                 myGameInstance = unityInstance;
                 loadingCover.style.display = "none";
+            }).catch((err) => {
+                console.error("Unity Error:", err);
             });
         };
         document.body.appendChild(script);
 
-        function InitGame() {
-            console.log('Game initialized with Ad-Block.');
-            // Stop the game from auto-opening ads on start
-            nowFullAdOpen = false;
-        }
-
-        // Global error bypass
-        window.addEventListener("unhandledrejection", (e) => e.preventDefault());
+        // Prevent Right Click
+        document.addEventListener('contextmenu', e => e.preventDefault());
     </script>
 </body>
 </html>
