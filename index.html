@@ -5,78 +5,31 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
     <link rel="stylesheet" href="./style.css"/>
+
     <style>
         canvas:focus { outline: none; }
-        html, body { padding: 0; margin: 0; overflow: hidden; user-select: none; height: 100%; background: #000; }
-        #unity-container { width: 100%; height: 100%; }
+        html, body {
+            padding: 0; margin: 0; overflow: hidden;
+            -webkit-touch-callout: none; -webkit-user-select: none;
+            user-select: none; height: 100%; background: #000;
+        }
     </style>
 </head>
 <body class="dark">
     <div id="unity-container" class="unity-desktop">
         <canvas id="unity-canvas" tabindex="-1"></canvas>
     </div>
-    <div id="loading-cover">
+    <div id="loading-cover" style="display:none;">
         <div id="unity-loading-bar">
             <div id="unity-logo"><img src="gp.png"/></div>
-            <div id="unity-progress-bar-empty"><div id="unity-progress-bar-full"></div></div>
+            <div id="unity-progress-bar-empty" style="display: none;">
+                <div id="unity-progress-bar-full"></div>
+            </div>
             <div class="spinner"></div>
         </div>
     </div>
 
     <script>
-        // --- 1. GLOBAL SDK MOCK (Required before Loader) ---
-        var myGameInstance = null;
-        var ysdk = null; 
-        var player = null;
-        var leaderboard = null;
-        var payments = null;
-
-        // Mocking the environment data for the C# side
-        var environmentData = {
-            language: "en", domain: "com", deviceType: "desktop",
-            isMobile: false, isDesktop: true, isTablet: false, isTV: false,
-            appID: "12345", browserLang: "en", payload: null,
-            promptCanShow: false, reviewCanShow: false
-        };
-
-        var cloudSaves = "noData";
-        var paymentsData = "none";
-        var playerData = "noData";
-
-        // --- 2. THE AD-BLOCKER LOGIC ---
-        function FullAdShow() { 
-            console.log("Bypassing Fullscreen Ad");
-            if (myGameInstance) myGameInstance.SendMessage('YandexGame', 'CloseFullAd'); 
-        }
-        function RewardedShow(id) { 
-            console.log("Bypassing Rewarded Ad");
-            if (myGameInstance) {
-                myGameInstance.SendMessage('YandexGame', 'Reward', id || 1);
-                myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
-            }
-        }
-        function StickyAdActivity() {}
-        function InitLeaderboards() {}
-        function GetLeaderboardScores() {}
-        function SetLeaderboardScores() {}
-        function Review() {}
-        function PromptShow() {}
-        function ConsumePurchase() {}
-
-        // This is the core "Handshake" that finishes the loading bar
-        function InitGame() {
-            if (myGameInstance) {
-                try {
-                    myGameInstance.SendMessage('YandexGame', 'SetEnvironmentData', JSON.stringify(environmentData));
-                    myGameInstance.SendMessage('YandexGame', 'SetCloudSaves', cloudSaves);
-                    myGameInstance.SendMessage('YandexGame', 'SetPlayerData', playerData);
-                    myGameInstance.SendMessage('YandexGame', 'Initialized');
-                    console.log("Unity Handshake Success");
-                } catch(e) { console.error("Handshake failed:", e); }
-            }
-        }
-
-        // --- 3. UNITY ENGINE LOADER ---
         const buildUrl = "Build";
         const loaderUrl = buildUrl + "/build.loader.js";
         const config = {
@@ -89,29 +42,110 @@
             productVersion: "1.0.0.0"
         };
 
+        const container = document.querySelector("#unity-container");
         const canvas = document.querySelector("#unity-canvas");
         const loadingCover = document.querySelector("#loading-cover");
+        const progressBarEmpty = document.querySelector("#unity-progress-bar-empty");
         const progressBarFull = document.querySelector("#unity-progress-bar-full");
+        const spinner = document.querySelector('.spinner');
 
-        const script = document.createElement("script");
-        script.src = loaderUrl;
-        script.onload = () => {
-            createUnityInstance(canvas, config, (progress) => {
-                progressBarFull.style.width = (100 * progress) + "%";
-            }).then((unityInstance) => {
-                myGameInstance = unityInstance;
-                loadingCover.style.display = "none";
-                // Tell the game we are ready
-                setTimeout(InitGame, 1000);
-            }).catch((err) => {
-                console.error("Unity Error:", err);
-            });
+        if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+            container.className = "unity-mobile";
+        }
+
+        loadingCover.style.background = "url('background.gif') center / cover";
+        loadingCover.style.display = "";
+
+        document.addEventListener('contextmenu', event => event.preventDefault());
+
+        function FocusGame() { window.focus(); canvas.focus(); }
+        window.addEventListener('pointerdown', FocusGame);
+        window.addEventListener('touchstart', FocusGame);
+
+        let myGameInstance = null;
+        let ysdk = null; 
+        let initGame = false;
+        let nowFullAdOpen = false;
+
+        let environmentData = {
+            language: "en", domain: "default_domain", deviceType: "desktop",
+            isMobile: false, isDesktop: true, isTablet: false, isTV: false,
+            appID: "default_app_id", browserLang: "en", payload: null,
+            promptCanShow: false, reviewCanShow: false
         };
-        document.body.appendChild(script);
+        
+        let cloudSaves = 'noData';
+        let paymentsData = 'none';
+        let playerData = 'noData'; 
 
-        // Safety: Ignore background errors
-        window.addEventListener("unhandledrejection", (e) => e.preventDefault());
-        document.addEventListener('contextmenu', e => e.preventDefault());
+        // --- FIXED FUNCTIONS TO PREVENT HANGING ---
+        function FullAdShow() { 
+            console.log("Ad Blocked: Resuming Game...");
+            if (myGameInstance) myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
+        }
+
+        function RewardedShow(id) { 
+            console.log("Reward Blocked: Giving Reward...");
+            if (myGameInstance) {
+                myGameInstance.SendMessage('YandexGame', 'Reward', id || 1);
+                myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
+            }
+        }
+
+        function InitGame() {
+            try {
+                console.log('Bypassing SDK Handshake...');
+                initGame = true;
+                if (myGameInstance) {
+                    // We send these messages to "unlock" the loading screen
+                    myGameInstance.SendMessage('YandexGame', 'SetEnvironmentData', JSON.stringify(environmentData));
+                    myGameInstance.SendMessage('YandexGame', 'Initialized');
+                }
+            } catch (error) {
+                console.error("InitGame Error:", error);
+            }
+        }
+
+        // Stubs for stability
+        function GetPayments() { return Promise.resolve("none"); }
+        function SaveCloud() {}
+        function LoadCloud() { return Promise.resolve("noData"); }
+        function InitPlayer() { return Promise.resolve("noData"); }
+        function StickyAdActivity() {}
+        function Review() {}
+        function PromptShow() {}
+        function InitLeaderboards() {}
+        function GetLeaderboardScores() {}
+        function SetLeaderboardScores() {}
+        function ConsumePurchase() {}
+        function ConsumePurchases() {}
+
+        // --- START UNITY ---
+        try {
+            const script = document.createElement("script");
+            script.src = loaderUrl;
+            script.onload = () => {
+                createUnityInstance(canvas, config, (progress) => {
+                    spinner.style.display = "none";
+                    progressBarEmpty.style.display = "";
+                    progressBarFull.style.width = `${100 * progress}%`;
+                }).then((unityInstance) => {
+                    myGameInstance = unityInstance;
+                    loadingCover.style.display = "none";
+                    // Call InitGame shortly after load to ensure the engine is ready to receive messages
+                    setTimeout(InitGame, 500);
+                }).catch((message) => {
+                    console.error("Unity Loading Error:", message);
+                });
+            };
+            document.body.appendChild(script);
+        } catch (error) {
+            console.error("Initialization Error:", error);
+        }
+
+        window.addEventListener("unhandledrejection", function(event) {
+            event.preventDefault();
+        });
     </script>
 </body>
 </html>
