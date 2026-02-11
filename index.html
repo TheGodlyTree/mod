@@ -7,11 +7,7 @@
     <link rel="stylesheet" href="./style.css"/>
     <style>
         canvas:focus { outline: none; }
-        html, body {
-            padding: 0; margin: 0; overflow: hidden;
-            -webkit-touch-callout: none; -webkit-user-select: none;
-            user-select: none; height: 100%; background: #1a1a1a;
-        }
+        html, body { padding: 0; margin: 0; overflow: hidden; user-select: none; height: 100%; background: #000; }
         #unity-container { width: 100%; height: 100%; }
     </style>
 </head>
@@ -22,15 +18,65 @@
     <div id="loading-cover">
         <div id="unity-loading-bar">
             <div id="unity-logo"><img src="gp.png"/></div>
-            <div id="unity-progress-bar-empty">
-                <div id="unity-progress-bar-full"></div>
-            </div>
+            <div id="unity-progress-bar-empty"><div id="unity-progress-bar-full"></div></div>
             <div class="spinner"></div>
         </div>
     </div>
 
     <script>
-        // --- 1. CONFIG & INSTANCE VARS ---
+        // --- 1. GLOBAL SDK MOCK (Required before Loader) ---
+        var myGameInstance = null;
+        var ysdk = null; 
+        var player = null;
+        var leaderboard = null;
+        var payments = null;
+
+        // Mocking the environment data for the C# side
+        var environmentData = {
+            language: "en", domain: "com", deviceType: "desktop",
+            isMobile: false, isDesktop: true, isTablet: false, isTV: false,
+            appID: "12345", browserLang: "en", payload: null,
+            promptCanShow: false, reviewCanShow: false
+        };
+
+        var cloudSaves = "noData";
+        var paymentsData = "none";
+        var playerData = "noData";
+
+        // --- 2. THE AD-BLOCKER LOGIC ---
+        function FullAdShow() { 
+            console.log("Bypassing Fullscreen Ad");
+            if (myGameInstance) myGameInstance.SendMessage('YandexGame', 'CloseFullAd'); 
+        }
+        function RewardedShow(id) { 
+            console.log("Bypassing Rewarded Ad");
+            if (myGameInstance) {
+                myGameInstance.SendMessage('YandexGame', 'Reward', id || 1);
+                myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
+            }
+        }
+        function StickyAdActivity() {}
+        function InitLeaderboards() {}
+        function GetLeaderboardScores() {}
+        function SetLeaderboardScores() {}
+        function Review() {}
+        function PromptShow() {}
+        function ConsumePurchase() {}
+
+        // This is the core "Handshake" that finishes the loading bar
+        function InitGame() {
+            if (myGameInstance) {
+                try {
+                    myGameInstance.SendMessage('YandexGame', 'SetEnvironmentData', JSON.stringify(environmentData));
+                    myGameInstance.SendMessage('YandexGame', 'SetCloudSaves', cloudSaves);
+                    myGameInstance.SendMessage('YandexGame', 'SetPlayerData', playerData);
+                    myGameInstance.SendMessage('YandexGame', 'Initialized');
+                    console.log("Unity Handshake Success");
+                } catch(e) { console.error("Handshake failed:", e); }
+            }
+        }
+
+        // --- 3. UNITY ENGINE LOADER ---
         const buildUrl = "Build";
         const loaderUrl = buildUrl + "/build.loader.js";
         const config = {
@@ -43,51 +89,6 @@
             productVersion: "1.0.0.0"
         };
 
-        let myGameInstance = null;
-
-        // --- 2. THE "FAKE" SDK (Crucial for Finishing Loading) ---
-        // These variables must exist for the C# script to "verify" the SDK is active
-        var ysdk = {
-            adv: {
-                showFullscreenAdv: (opts) => { if(opts.callbacks) opts.callbacks.onClose(true); },
-                showRewardedVideo: (opts) => { if(opts.callbacks) { opts.callbacks.onOpen(); opts.callbacks.onReward(); opts.callbacks.onClose(); } }
-            },
-            getPlayer: () => Promise.resolve({ 
-                getName: () => "Player", getPhoto: () => "", 
-                getData: () => Promise.resolve({}), setData: () => Promise.resolve() 
-            }),
-            getEnvironment: () => ({ language: "en", domain: "com", deviceType: "desktop" }),
-            getPayments: () => Promise.reject("Disabled")
-        };
-
-        // Standard variables expected by YandexGame template
-        var player = "noData";
-        var cloudSaves = "noData";
-        var paymentsData = "none";
-        var environmentData = { language: "en", deviceType: "desktop", isMobile: false, isDesktop: true };
-
-        // --- 3. AD & INITIALIZATION HANDLERS ---
-        function FullAdShow() { 
-            if (myGameInstance) myGameInstance.SendMessage('YandexGame', 'CloseFullAd'); 
-        }
-        function RewardedShow() { 
-            if (myGameInstance) {
-                myGameInstance.SendMessage('YandexGame', 'Reward', 1);
-                myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
-            }
-        }
-        function StickyAdActivity() {}
-
-        function InitGame() {
-            console.log("SDK Bypass: Sending Initialization Signal...");
-            if (myGameInstance) {
-                // This tells the Unity side that the SDK check is complete
-                myGameInstance.SendMessage('YandexGame', 'SetEnvironmentData', JSON.stringify(environmentData));
-                myGameInstance.SendMessage('YandexGame', 'Initialized');
-            }
-        }
-
-        // --- 4. LOADER LOGIC ---
         const canvas = document.querySelector("#unity-canvas");
         const loadingCover = document.querySelector("#loading-cover");
         const progressBarFull = document.querySelector("#unity-progress-bar-full");
@@ -96,19 +97,20 @@
         script.src = loaderUrl;
         script.onload = () => {
             createUnityInstance(canvas, config, (progress) => {
-                progressBarFull.style.width = `${100 * progress}%`;
+                progressBarFull.style.width = (100 * progress) + "%";
             }).then((unityInstance) => {
                 myGameInstance = unityInstance;
                 loadingCover.style.display = "none";
-                // Trigger the fake init after a short delay to ensure C# is ready
-                setTimeout(InitGame, 500);
+                // Tell the game we are ready
+                setTimeout(InitGame, 1000);
             }).catch((err) => {
-                alert("Unity Load Error. Check Console.");
-                console.error(err);
+                console.error("Unity Error:", err);
             });
         };
         document.body.appendChild(script);
 
+        // Safety: Ignore background errors
+        window.addEventListener("unhandledrejection", (e) => e.preventDefault());
         document.addEventListener('contextmenu', e => e.preventDefault());
     </script>
 </body>
