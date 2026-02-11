@@ -9,18 +9,17 @@
         canvas:focus { outline: none; }
         html, body {
             padding: 0; margin: 0; overflow: hidden;
-            -webkit-touch-callout: none; -webkit-user-select: none;
-            user-select: none; height: 100%; background: #000;
+            background: #000; height: 100%;
         }
         #version-tag {
             position: absolute; bottom: 10px; left: 10px;
             color: rgba(255, 255, 255, 0.4); font-family: sans-serif;
-            font-size: 12px; z-index: 100; pointer-events: none;
+            font-size: 12px; z-index: 100;
         }
     </style>
 </head>
 <body class="dark">
-    <div id="version-tag">v 0.2</div>
+    <div id="version-tag">v 0.4</div>
     <div id="unity-container" class="unity-desktop">
         <canvas id="unity-canvas" tabindex="-1"></canvas>
     </div>
@@ -35,61 +34,69 @@
     </div>
 
     <script>
-        // --- v 0.2 BOOTSTRAP ---
+        // --- v 0.4: THE NUCLEAR BYPASS ---
         var myGameInstance = null;
-        
-        // Mocking the Yandex environment so the engine doesn't "wait" on a black screen
-        var ysdk = null;
-        var player = null;
-        var environmentData = { 
-            language: "en", domain: "com", deviceType: "desktop", 
-            isMobile: false, isDesktop: true, payload: null 
-        };
-        var cloudSaves = 'noData';
-        var playerData = 'noData';
-        var paymentsData = 'none';
 
-        // --- AD BYPASS LOGIC ---
-        function ForceResume() {
-            if (myGameInstance) {
-                myGameInstance.SendMessage('YandexGame', 'OnCloseVast');
-                myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
-                myGameInstance.SendMessage('YandexGame', 'OnCloseFullAd');
+        // 1. We mock the entire Yandex SDK Object to trick the C# side
+        window.YaGames = {
+            init: function() {
+                return new Promise(resolve => {
+                    resolve({
+                        adv: {
+                            showFullscreenAdv: (config) => {
+                                console.log("Bypassing Fullscreen...");
+                                if (config.callbacks && config.callbacks.onClose) config.callbacks.onClose(true);
+                            },
+                            showRewardedVideo: (config) => {
+                                console.log("Bypassing Reward...");
+                                if (config.callbacks) {
+                                    config.callbacks.onOpen();
+                                    config.callbacks.onReward();
+                                    config.callbacks.onClose();
+                                }
+                            }
+                        },
+                        getPlayer: () => Promise.resolve({ 
+                            getName: () => "Player", 
+                            getPhoto: () => "", 
+                            getData: () => Promise.resolve({}),
+                            setData: () => Promise.resolve()
+                        }),
+                        getEnvironment: () => ({ language: "en", domain: "com", deviceType: "desktop" })
+                    });
+                });
             }
-        }
+        };
 
-        function FullAdShow() {
-            console.log("Ad bypass triggered.");
-            let attempts = 0;
-            let loop = setInterval(() => {
-                ForceResume();
-                if (++attempts > 10) clearInterval(loop);
-            }, 200);
+        // 2. These functions catch the direct calls from the Unity C# scripts
+        function FullAdShow() { 
+            if (!myGameInstance) return;
+            // We send every possible 'Resume' command used by different versions of this mod
+            myGameInstance.SendMessage('YandexGame', 'OnCloseVast');
+            myGameInstance.SendMessage('YandexGame', 'OnCloseFullAd');
+            myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
+            myGameInstance.SendMessage('YandexGame', 'Resume'); // Added extra resume trigger
         }
 
         function RewardedShow(id) {
-            if (myGameInstance) myGameInstance.SendMessage('YandexGame', 'Reward', id || 1);
+            if (!myGameInstance) return;
+            myGameInstance.SendMessage('YandexGame', 'Reward', id || 1);
             FullAdShow();
         }
 
-        // Stubs for API calls
-        function GetPayments() { return Promise.resolve("none"); }
-        function SaveCloud() {}
-        function LoadCloud() { return Promise.resolve("noData"); }
-        function InitPlayer() { return Promise.resolve("noData"); }
-        function StickyAdActivity() {}
-        function Review() {}
-        function PromptShow() {}
+        // 3. Environment Variables
+        var environmentData = { language: "en", domain: "com", deviceType: "desktop", isMobile: false };
+        var cloudSaves = 'noData';
+        var playerData = 'noData';
 
         function InitGame() {
             if (myGameInstance) {
                 myGameInstance.SendMessage('YandexGame', 'SetEnvironmentData', JSON.stringify(environmentData));
                 myGameInstance.SendMessage('YandexGame', 'Initialized');
-                console.log("Handshake Sent");
             }
         }
 
-        // --- UNITY LOADER ---
+        // --- LOADER ENGINE ---
         const buildUrl = "Build";
         const loaderUrl = buildUrl + "/build.loader.js";
         const config = {
@@ -114,17 +121,27 @@
             }).then((unityInstance) => {
                 myGameInstance = unityInstance;
                 loadingCover.style.display = "none";
-                setTimeout(InitGame, 800); // Wait slightly longer for C# to bind
-            }).catch((err) => {
-                console.error("Unity failed to load:", err);
-                // If it crashes, at least hide the cover
-                loadingCover.style.display = "none";
+                
+                // Continuous 'Anti-Freeze' heartbeat
+                setInterval(() => {
+                    if (window.nowFullAdOpen) FullAdShow();
+                }, 500);
+
+                setTimeout(InitGame, 500);
             });
         };
         document.body.appendChild(script);
 
-        // Global Anti-Crash
-        window.addEventListener("unhandledrejection", (e) => e.preventDefault());
+        // Required Stubs to prevent "Undefined" crashes
+        function GetPayments() { return Promise.resolve("none"); }
+        function SaveCloud() {}
+        function LoadCloud() { return Promise.resolve("noData"); }
+        function InitPlayer() { return Promise.resolve("noData"); }
+        function StickyAdActivity() {}
+        function Review() {}
+        function PromptShow() {}
+        function InitLeaderboards() {}
+        
         document.addEventListener('contextmenu', e => e.preventDefault());
     </script>
 </body>
