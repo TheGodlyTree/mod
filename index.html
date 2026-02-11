@@ -12,28 +12,22 @@
             -webkit-touch-callout: none; -webkit-user-select: none;
             user-select: none; height: 100%; background: #000;
         }
-        /* Version Indicator */
         #version-tag {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            color: rgba(255, 255, 255, 0.5);
-            font-family: sans-serif;
-            font-size: 12px;
-            z-index: 100;
-            pointer-events: none;
+            position: absolute; bottom: 10px; left: 10px;
+            color: rgba(255, 255, 255, 0.4); font-family: sans-serif;
+            font-size: 12px; z-index: 100; pointer-events: none;
         }
     </style>
 </head>
 <body class="dark">
-    <div id="version-tag">v 0.1</div>
+    <div id="version-tag">v 0.2</div>
     <div id="unity-container" class="unity-desktop">
         <canvas id="unity-canvas" tabindex="-1"></canvas>
     </div>
-    <div id="loading-cover" style="display:none;">
+    <div id="loading-cover">
         <div id="unity-loading-bar">
             <div id="unity-logo"><img src="gp.png"/></div>
-            <div id="unity-progress-bar-empty" style="display: none;">
+            <div id="unity-progress-bar-empty">
                 <div id="unity-progress-bar-full"></div>
             </div>
             <div class="spinner"></div>
@@ -41,6 +35,61 @@
     </div>
 
     <script>
+        // --- v 0.2 BOOTSTRAP ---
+        var myGameInstance = null;
+        
+        // Mocking the Yandex environment so the engine doesn't "wait" on a black screen
+        var ysdk = null;
+        var player = null;
+        var environmentData = { 
+            language: "en", domain: "com", deviceType: "desktop", 
+            isMobile: false, isDesktop: true, payload: null 
+        };
+        var cloudSaves = 'noData';
+        var playerData = 'noData';
+        var paymentsData = 'none';
+
+        // --- AD BYPASS LOGIC ---
+        function ForceResume() {
+            if (myGameInstance) {
+                myGameInstance.SendMessage('YandexGame', 'OnCloseVast');
+                myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
+                myGameInstance.SendMessage('YandexGame', 'OnCloseFullAd');
+            }
+        }
+
+        function FullAdShow() {
+            console.log("Ad bypass triggered.");
+            let attempts = 0;
+            let loop = setInterval(() => {
+                ForceResume();
+                if (++attempts > 10) clearInterval(loop);
+            }, 200);
+        }
+
+        function RewardedShow(id) {
+            if (myGameInstance) myGameInstance.SendMessage('YandexGame', 'Reward', id || 1);
+            FullAdShow();
+        }
+
+        // Stubs for API calls
+        function GetPayments() { return Promise.resolve("none"); }
+        function SaveCloud() {}
+        function LoadCloud() { return Promise.resolve("noData"); }
+        function InitPlayer() { return Promise.resolve("noData"); }
+        function StickyAdActivity() {}
+        function Review() {}
+        function PromptShow() {}
+
+        function InitGame() {
+            if (myGameInstance) {
+                myGameInstance.SendMessage('YandexGame', 'SetEnvironmentData', JSON.stringify(environmentData));
+                myGameInstance.SendMessage('YandexGame', 'Initialized');
+                console.log("Handshake Sent");
+            }
+        }
+
+        // --- UNITY LOADER ---
         const buildUrl = "Build";
         const loaderUrl = buildUrl + "/build.loader.js";
         const config = {
@@ -57,71 +106,25 @@
         const loadingCover = document.querySelector("#loading-cover");
         const progressBarFull = document.querySelector("#unity-progress-bar-full");
 
-        let myGameInstance = null;
-        
-        // --- AD FREEZE FIX ENGINE ---
-
-        function ForceCloseAds() {
-            if (myGameInstance) {
-                // We spam all possible "Resume" triggers used by Yandex SDK templates
-                myGameInstance.SendMessage('YandexGame', 'OnCloseVast'); 
-                myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
-                myGameInstance.SendMessage('YandexGame', 'OnCloseFullAd');
-                console.log("Sent Resume signals to Unity.");
-            }
-        }
-
-        function FullAdShow() { 
-            console.log("Ad intercepted. Forcing resume loop...");
-            // Run the close signal 5 times over 1 second to catch the countdown
-            let count = 0;
-            let interval = setInterval(() => {
-                ForceCloseAds();
-                count++;
-                if (count > 5) clearInterval(interval);
-            }, 200);
-        }
-
-        function RewardedShow(id) { 
-            console.log("Reward requested. Granting...");
-            if (myGameInstance) {
-                myGameInstance.SendMessage('YandexGame', 'Reward', id || 1);
-                ForceCloseAds();
-            }
-        }
-
-        // --- SDK MOCK DATA ---
-        let environmentData = { language: "en", domain: "com", deviceType: "desktop" };
-        function GetPayments() { return Promise.resolve("none"); }
-        function SaveCloud() {}
-        function LoadCloud() { return Promise.resolve("noData"); }
-        function InitPlayer() { return Promise.resolve("noData"); }
-        function StickyAdActivity() {}
-        function Review() {}
-        function PromptShow() {}
-        function InitLeaderboards() {}
-
-        function InitGame() {
-            if (myGameInstance) {
-                myGameInstance.SendMessage('YandexGame', 'SetEnvironmentData', JSON.stringify(environmentData));
-                myGameInstance.SendMessage('YandexGame', 'Initialized');
-            }
-        }
-
-        // --- LOADER ---
         const script = document.createElement("script");
         script.src = loaderUrl;
         script.onload = () => {
             createUnityInstance(canvas, config, (progress) => {
-                progressBarFull.style.width = `${100 * progress}%`;
+                if (progressBarFull) progressBarFull.style.width = (100 * progress) + "%";
             }).then((unityInstance) => {
                 myGameInstance = unityInstance;
                 loadingCover.style.display = "none";
-                setTimeout(InitGame, 500);
+                setTimeout(InitGame, 800); // Wait slightly longer for C# to bind
+            }).catch((err) => {
+                console.error("Unity failed to load:", err);
+                // If it crashes, at least hide the cover
+                loadingCover.style.display = "none";
             });
         };
         document.body.appendChild(script);
 
+        // Global Anti-Crash
+        window.addEventListener("unhandledrejection", (e) => e.preventDefault());
         document.addEventListener('contextmenu', e => e.preventDefault());
     </script>
 </body>
