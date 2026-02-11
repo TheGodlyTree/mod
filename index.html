@@ -16,10 +16,15 @@
             color: rgba(255, 255, 255, 0.4); font-family: monospace;
             font-size: 12px; z-index: 100;
         }
+        /* Hiding potential overlay buttons that aren't inside the canvas */
+        .review-button, .subscribe-button, #review-btn, #sub-btn {
+            display: none !important;
+            visibility: hidden !important;
+        }
     </style>
 </head>
 <body class="dark">
-    <div id="version-tag">v 0.7</div>
+    <div id="version-tag">v 0.8</div>
     <div id="unity-container" class="unity-desktop">
         <canvas id="unity-canvas" tabindex="-1"></canvas>
     </div>
@@ -34,10 +39,8 @@
     </div>
 
     <script>
-        // --- v 0.7: THE STATE OVERRIDE ---
+        // --- v 0.8: REMOVING BUTTON LOGIC ---
         var myGameInstance = null;
-
-        // Force ad-related variables to stay "Closed" so the C# timer doesn't hang
         window.nowFullAdOpen = false;
         window.adProgress = false;
 
@@ -48,7 +51,7 @@
         window.playerData = 'noData';
         window.paymentsData = 'none';
 
-        // Fix for the ReferenceError found in your screenshots
+        // Unity Handshake
         window.InitGame = function() {
             if (myGameInstance) {
                 myGameInstance.SendMessage('YandexGame', 'SetEnvironmentData', JSON.stringify(window.environmentData));
@@ -57,7 +60,10 @@
         };
         window.InitGame_js = window.InitGame;
 
-        // NUCLEAR UNFREEZE: This function forces Unity to resume time and logic
+        // --- BUTTON REMOVAL & AD BYPASS ---
+        window.Review = function() { console.log("Review button clicked: Blocked."); };
+        window.PromptShow = function() { console.log("Subscribe/Prompt blocked."); };
+        
         window.ForceUnfreeze = function() {
             window.nowFullAdOpen = false;
             window.adProgress = false;
@@ -65,16 +71,11 @@
                 myGameInstance.SendMessage('YandexGame', 'OnCloseVast');
                 myGameInstance.SendMessage('YandexGame', 'OnCloseFullAd');
                 myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
-                // Some mods pause time during ads; this forces time to resume
                 myGameInstance.SendMessage('YandexGame', 'Resume'); 
             }
         };
 
-        window.FullAdShow = function() {
-            console.log("Ad Intercepted at 1. Forcing Resume.");
-            window.ForceUnfreeze();
-        };
-
+        window.FullAdShow = function() { window.ForceUnfreeze(); };
         window.RewardedShow = function(id) {
             if (myGameInstance) myGameInstance.SendMessage('YandexGame', 'Reward', id || 1);
             window.ForceUnfreeze();
@@ -86,8 +87,6 @@
         window.LoadCloud = () => Promise.resolve("noData");
         window.InitPlayer = () => Promise.resolve("noData");
         window.StickyAdActivity = () => {};
-        window.Review = () => {};
-        window.PromptShow = () => {};
         window.InitLeaderboards = () => {};
 
         // Unity Loader
@@ -115,14 +114,11 @@
             }).then((unityInstance) => {
                 myGameInstance = unityInstance;
                 loadingCover.style.display = "none";
-                
-                // ANTI-FREEZE HEARTBEAT: Runs every 500ms
                 setInterval(window.ForceUnfreeze, 500);
             });
         };
         document.body.appendChild(script);
 
-        // Global Anti-Crash
         window.addEventListener("unhandledrejection", (e) => e.preventDefault());
         document.addEventListener('contextmenu', e => e.preventDefault());
     </script>
