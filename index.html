@@ -12,9 +12,21 @@
             -webkit-touch-callout: none; -webkit-user-select: none;
             user-select: none; height: 100%; background: #000;
         }
+        /* Version Indicator */
+        #version-tag {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: rgba(255, 255, 255, 0.5);
+            font-family: sans-serif;
+            font-size: 12px;
+            z-index: 100;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body class="dark">
+    <div id="version-tag">v 0.1</div>
     <div id="unity-container" class="unity-desktop">
         <canvas id="unity-canvas" tabindex="-1"></canvas>
     </div>
@@ -43,46 +55,43 @@
 
         const canvas = document.querySelector("#unity-canvas");
         const loadingCover = document.querySelector("#loading-cover");
-        const progressBarEmpty = document.querySelector("#unity-progress-bar-empty");
         const progressBarFull = document.querySelector("#unity-progress-bar-full");
-        const spinner = document.querySelector('.spinner');
 
         let myGameInstance = null;
-        let ysdk = null; 
         
-        let environmentData = {
-            language: "en", domain: "default_domain", deviceType: "desktop",
-            isMobile: false, isDesktop: true, isTablet: false, isTV: false,
-            appID: "default_app_id", browserLang: "en", payload: null,
-            promptCanShow: false, reviewCanShow: false
-        };
-        
-        let cloudSaves = 'noData';
-        let paymentsData = 'none';
-        let playerData = 'noData'; 
+        // --- AD FREEZE FIX ENGINE ---
 
-        // --- THE CRITICAL FIX FOR THE "3-2-1" FREEZE ---
-        
-        function FullAdShow() { 
-            console.log("Ad Countdown Detected: Forcing Resume...");
+        function ForceCloseAds() {
             if (myGameInstance) {
-                // We send 'OnCloseVast' or 'CloseFullAd' depending on the version
-                // Sending both ensures the game receives the "Resume" signal
+                // We spam all possible "Resume" triggers used by Yandex SDK templates
                 myGameInstance.SendMessage('YandexGame', 'OnCloseVast'); 
                 myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
+                myGameInstance.SendMessage('YandexGame', 'OnCloseFullAd');
+                console.log("Sent Resume signals to Unity.");
             }
+        }
+
+        function FullAdShow() { 
+            console.log("Ad intercepted. Forcing resume loop...");
+            // Run the close signal 5 times over 1 second to catch the countdown
+            let count = 0;
+            let interval = setInterval(() => {
+                ForceCloseAds();
+                count++;
+                if (count > 5) clearInterval(interval);
+            }, 200);
         }
 
         function RewardedShow(id) { 
-            console.log("Reward Requested: Granting and Resuming...");
+            console.log("Reward requested. Granting...");
             if (myGameInstance) {
                 myGameInstance.SendMessage('YandexGame', 'Reward', id || 1);
-                myGameInstance.SendMessage('YandexGame', 'OnCloseVast');
-                myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
+                ForceCloseAds();
             }
         }
 
-        // Standard stubs for stability
+        // --- SDK MOCK DATA ---
+        let environmentData = { language: "en", domain: "com", deviceType: "desktop" };
         function GetPayments() { return Promise.resolve("none"); }
         function SaveCloud() {}
         function LoadCloud() { return Promise.resolve("noData"); }
@@ -91,18 +100,12 @@
         function Review() {}
         function PromptShow() {}
         function InitLeaderboards() {}
-        function GetLeaderboardScores() {}
-        function SetLeaderboardScores() {}
-        function ConsumePurchase() {}
-        function ConsumePurchases() {}
 
         function InitGame() {
-            try {
-                if (myGameInstance) {
-                    myGameInstance.SendMessage('YandexGame', 'SetEnvironmentData', JSON.stringify(environmentData));
-                    myGameInstance.SendMessage('YandexGame', 'Initialized');
-                }
-            } catch (e) { console.error(e); }
+            if (myGameInstance) {
+                myGameInstance.SendMessage('YandexGame', 'SetEnvironmentData', JSON.stringify(environmentData));
+                myGameInstance.SendMessage('YandexGame', 'Initialized');
+            }
         }
 
         // --- LOADER ---
@@ -110,8 +113,6 @@
         script.src = loaderUrl;
         script.onload = () => {
             createUnityInstance(canvas, config, (progress) => {
-                spinner.style.display = "none";
-                progressBarEmpty.style.display = "";
                 progressBarFull.style.width = `${100 * progress}%`;
             }).then((unityInstance) => {
                 myGameInstance = unityInstance;
@@ -121,7 +122,6 @@
         };
         document.body.appendChild(script);
 
-        window.addEventListener("unhandledrejection", (e) => e.preventDefault());
         document.addEventListener('contextmenu', e => e.preventDefault());
     </script>
 </body>
