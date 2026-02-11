@@ -19,7 +19,7 @@
     </style>
 </head>
 <body class="dark">
-    <div id="version-tag">v 0.6</div>
+    <div id="version-tag">v 0.7</div>
     <div id="unity-container" class="unity-desktop">
         <canvas id="unity-canvas" tabindex="-1"></canvas>
     </div>
@@ -34,45 +34,53 @@
     </div>
 
     <script>
-        // --- v 0.6: GLOBAL FUNCTION MAPPING ---
+        // --- v 0.7: THE STATE OVERRIDE ---
         var myGameInstance = null;
 
-        // Mock data to prevent "undefined" crashes
+        // Force ad-related variables to stay "Closed" so the C# timer doesn't hang
+        window.nowFullAdOpen = false;
+        window.adProgress = false;
+
+        // Mock Data
         window.ysdk = null;
         window.environmentData = { language: "en", domain: "com", deviceType: "desktop", isMobile: false };
         window.cloudSaves = 'noData';
         window.playerData = 'noData';
         window.paymentsData = 'none';
 
-        // THE FIX: Attach InitGame to the window so Unity can see it
+        // Fix for the ReferenceError found in your screenshots
         window.InitGame = function() {
-            console.log("Unity called InitGame. Responding...");
             if (myGameInstance) {
                 myGameInstance.SendMessage('YandexGame', 'SetEnvironmentData', JSON.stringify(window.environmentData));
                 myGameInstance.SendMessage('YandexGame', 'Initialized');
             }
         };
-
-        // Backup functions in case the mod uses different naming conventions
         window.InitGame_js = window.InitGame;
-        window.initGame = window.InitGame;
 
-        // AD BYPASS: Forces unfreeze when the game calls for ads
-        window.FullAdShow = function() {
-            console.log("Ad bypass triggered.");
+        // NUCLEAR UNFREEZE: This function forces Unity to resume time and logic
+        window.ForceUnfreeze = function() {
+            window.nowFullAdOpen = false;
+            window.adProgress = false;
             if (myGameInstance) {
                 myGameInstance.SendMessage('YandexGame', 'OnCloseVast');
+                myGameInstance.SendMessage('YandexGame', 'OnCloseFullAd');
                 myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
-                myGameInstance.SendMessage('YandexGame', 'Resume');
+                // Some mods pause time during ads; this forces time to resume
+                myGameInstance.SendMessage('YandexGame', 'Resume'); 
             }
+        };
+
+        window.FullAdShow = function() {
+            console.log("Ad Intercepted at 1. Forcing Resume.");
+            window.ForceUnfreeze();
         };
 
         window.RewardedShow = function(id) {
             if (myGameInstance) myGameInstance.SendMessage('YandexGame', 'Reward', id || 1);
-            window.FullAdShow();
+            window.ForceUnfreeze();
         };
 
-        // Required API stubs
+        // Standard API Stubs
         window.GetPayments = () => Promise.resolve("none");
         window.SaveCloud = () => {};
         window.LoadCloud = () => Promise.resolve("noData");
@@ -108,12 +116,13 @@
                 myGameInstance = unityInstance;
                 loadingCover.style.display = "none";
                 
-                // Final safety: if Unity missed the call, we pulse it
-                setInterval(() => { if(window.InitGame) window.InitGame(); }, 2000);
+                // ANTI-FREEZE HEARTBEAT: Runs every 500ms
+                setInterval(window.ForceUnfreeze, 500);
             });
         };
         document.body.appendChild(script);
 
+        // Global Anti-Crash
         window.addEventListener("unhandledrejection", (e) => e.preventDefault());
         document.addEventListener('contextmenu', e => e.preventDefault());
     </script>
