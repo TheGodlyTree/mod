@@ -5,7 +5,6 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
     <link rel="stylesheet" href="./style.css"/>
-
     <style>
         canvas:focus { outline: none; }
         html, body {
@@ -42,31 +41,15 @@
             productVersion: "1.0.0.0"
         };
 
-        const container = document.querySelector("#unity-container");
         const canvas = document.querySelector("#unity-canvas");
         const loadingCover = document.querySelector("#loading-cover");
         const progressBarEmpty = document.querySelector("#unity-progress-bar-empty");
         const progressBarFull = document.querySelector("#unity-progress-bar-full");
         const spinner = document.querySelector('.spinner');
 
-        if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-            container.className = "unity-mobile";
-        }
-
-        loadingCover.style.background = "url('background.gif') center / cover";
-        loadingCover.style.display = "";
-
-        document.addEventListener('contextmenu', event => event.preventDefault());
-
-        function FocusGame() { window.focus(); canvas.focus(); }
-        window.addEventListener('pointerdown', FocusGame);
-        window.addEventListener('touchstart', FocusGame);
-
         let myGameInstance = null;
         let ysdk = null; 
-        let initGame = false;
-        let nowFullAdOpen = false;
-
+        
         let environmentData = {
             language: "en", domain: "default_domain", deviceType: "desktop",
             isMobile: false, isDesktop: true, isTablet: false, isTV: false,
@@ -78,35 +61,28 @@
         let paymentsData = 'none';
         let playerData = 'noData'; 
 
-        // --- FIXED FUNCTIONS TO PREVENT HANGING ---
+        // --- THE CRITICAL FIX FOR THE "3-2-1" FREEZE ---
+        
         function FullAdShow() { 
-            console.log("Ad Blocked: Resuming Game...");
-            if (myGameInstance) myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
-        }
-
-        function RewardedShow(id) { 
-            console.log("Reward Blocked: Giving Reward...");
+            console.log("Ad Countdown Detected: Forcing Resume...");
             if (myGameInstance) {
-                myGameInstance.SendMessage('YandexGame', 'Reward', id || 1);
+                // We send 'OnCloseVast' or 'CloseFullAd' depending on the version
+                // Sending both ensures the game receives the "Resume" signal
+                myGameInstance.SendMessage('YandexGame', 'OnCloseVast'); 
                 myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
             }
         }
 
-        function InitGame() {
-            try {
-                console.log('Bypassing SDK Handshake...');
-                initGame = true;
-                if (myGameInstance) {
-                    // We send these messages to "unlock" the loading screen
-                    myGameInstance.SendMessage('YandexGame', 'SetEnvironmentData', JSON.stringify(environmentData));
-                    myGameInstance.SendMessage('YandexGame', 'Initialized');
-                }
-            } catch (error) {
-                console.error("InitGame Error:", error);
+        function RewardedShow(id) { 
+            console.log("Reward Requested: Granting and Resuming...");
+            if (myGameInstance) {
+                myGameInstance.SendMessage('YandexGame', 'Reward', id || 1);
+                myGameInstance.SendMessage('YandexGame', 'OnCloseVast');
+                myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
             }
         }
 
-        // Stubs for stability
+        // Standard stubs for stability
         function GetPayments() { return Promise.resolve("none"); }
         function SaveCloud() {}
         function LoadCloud() { return Promise.resolve("noData"); }
@@ -120,32 +96,33 @@
         function ConsumePurchase() {}
         function ConsumePurchases() {}
 
-        // --- START UNITY ---
-        try {
-            const script = document.createElement("script");
-            script.src = loaderUrl;
-            script.onload = () => {
-                createUnityInstance(canvas, config, (progress) => {
-                    spinner.style.display = "none";
-                    progressBarEmpty.style.display = "";
-                    progressBarFull.style.width = `${100 * progress}%`;
-                }).then((unityInstance) => {
-                    myGameInstance = unityInstance;
-                    loadingCover.style.display = "none";
-                    // Call InitGame shortly after load to ensure the engine is ready to receive messages
-                    setTimeout(InitGame, 500);
-                }).catch((message) => {
-                    console.error("Unity Loading Error:", message);
-                });
-            };
-            document.body.appendChild(script);
-        } catch (error) {
-            console.error("Initialization Error:", error);
+        function InitGame() {
+            try {
+                if (myGameInstance) {
+                    myGameInstance.SendMessage('YandexGame', 'SetEnvironmentData', JSON.stringify(environmentData));
+                    myGameInstance.SendMessage('YandexGame', 'Initialized');
+                }
+            } catch (e) { console.error(e); }
         }
 
-        window.addEventListener("unhandledrejection", function(event) {
-            event.preventDefault();
-        });
+        // --- LOADER ---
+        const script = document.createElement("script");
+        script.src = loaderUrl;
+        script.onload = () => {
+            createUnityInstance(canvas, config, (progress) => {
+                spinner.style.display = "none";
+                progressBarEmpty.style.display = "";
+                progressBarFull.style.width = `${100 * progress}%`;
+            }).then((unityInstance) => {
+                myGameInstance = unityInstance;
+                loadingCover.style.display = "none";
+                setTimeout(InitGame, 500);
+            });
+        };
+        document.body.appendChild(script);
+
+        window.addEventListener("unhandledrejection", (e) => e.preventDefault());
+        document.addEventListener('contextmenu', e => e.preventDefault());
     </script>
 </body>
 </html>
