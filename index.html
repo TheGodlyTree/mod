@@ -5,28 +5,12 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
     <link rel="stylesheet" href="./style.css"/>
-
     <style>
-        /* Убираем выделение по нажатию клавиш */
-        canvas:focus {
-            outline: none;
-        }
-
+        canvas:focus { outline: none; }
         html, body {
-            /* Убираем отступы */
-            padding: 0;
-            margin: 0;
-            /* Отключаем скролл и лонгтап на IOS */
-            overflow: hidden;
-            -webkit-touch-callout: none;
-            -webkit-user-select: none;
-            -khtml-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
-            -webkit-tap-highlight-color: rgba(0,0,0,0);
-            /* Ставим высоту на 100% */
-            height: 100%;
+            padding: 0; margin: 0; overflow: hidden;
+            -webkit-touch-callout: none; -webkit-user-select: none;
+            user-select: none; height: 100%;
         }
     </style>
 </head>
@@ -45,7 +29,6 @@
     </div>
 
     <script>
-        const hideFullScreenButton = "";
         const buildUrl = "Build";
         const loaderUrl = buildUrl + "/build.loader.js";
         const config = {
@@ -58,130 +41,63 @@
             productVersion: "1.0.0.0"
         };
 
-        const container = document.querySelector("#unity-container");
         const canvas = document.querySelector("#unity-canvas");
         const loadingCover = document.querySelector("#loading-cover");
-        const progressBarEmpty = document.querySelector("#unity-progress-bar-empty");
         const progressBarFull = document.querySelector("#unity-progress-bar-full");
         const spinner = document.querySelector('.spinner');
 
-        if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-            container.className = "unity-mobile";
+        let myGameInstance = null;
+
+        // --- THE AD-KILLER ENGINE ---
+        
+        // This function tells Unity the ad is over so it stops "loading"
+        function CloseAd() {
+            if (myGameInstance) {
+                // We signal 'CloseFullAd' to tell Unity the interstitial is done
+                myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
+                // We signal 'Reward' to tell Unity the video was watched (unlocks items)
+                myGameInstance.SendMessage('YandexGame', 'Reward', 1); 
+                console.log("Ad bypassed and rewards granted.");
+            }
         }
 
-        loadingCover.style.background = "url('background.gif') center / cover";
-        loadingCover.style.display = "";
-
-        document.addEventListener('contextmenu', event => event.preventDefault());
-
-        function FocusGame() {
-            window.focus();
-            canvas.focus();
-        }
-
-        window.addEventListener('pointerdown', FocusGame);
-        window.addEventListener('touchstart', FocusGame);
-
-        let StartUnityInstance;
-        let myGameInstance;
+        function FullAdShow() { CloseAd(); }
+        function RewardedShow() { CloseAd(); }
+        function StickyAdActivity() { /* Banners do nothing */ }
+        
+        // Prevent Yandex SDK from actually loading
         let ysdk = null; 
-
-        let environmentData = {
-            language: "en",
-            domain: "default_domain",
-            deviceType: "desktop",
-            isMobile: false,
-            isDesktop: true,
-            isTablet: false,
-            isTV: false,
-            appID: "default_app_id",
-            browserLang: navigator.language || "en",
-            payload: null,
-            promptCanShow: false,
-            reviewCanShow: false,
-            platform: navigator.platform,
-            browser: (function() {
-                let userAgent = navigator.userAgent;
-                if (userAgent.includes("YaBrowser")) return "Yandex";
-                if (userAgent.includes("OPR") || userAgent.includes("Opera")) return "Opera";
-                if (userAgent.includes("Firefox")) return "Firefox";
-                if (userAgent.includes("MSIE") || userAgent.includes("Trident")) return "IE";
-                if (userAgent.includes("Edge")) return "Edge";
-                if (userAgent.includes("Chrome")) return "Chrome";
-                if (userAgent.includes("Safari")) return "Safari";
-                return "Other";
-            })()
-        };
+        let environmentData = { language: "en", deviceType: "desktop" };
         
-        let cloudSaves = 'noData';
-        let paymentsData = 'none';
-        let playerData = 'noData'; 
-        let player = null;
-        let payments = null;
-        let initGame = false;
-        let nowFullAdOpen = false; // Ads are disabled by default
-
-        // --- Ad Blocking Section ---
-        // We redefine these functions to do nothing, preventing ads from triggering.
-        function FullAdShow() { console.log("Ads: Interstitial blocked."); }
-        function RewardedShow() { console.log("Ads: Reward video blocked."); }
-        function StickyAdActivity() { console.log("Ads: Sticky banner blocked."); }
-        
-        // Maintaining stubs for other SDK functions to prevent crashes
+        // Stubs for stability
         function GetPayments() { return Promise.resolve("none"); }
         function SaveCloud() {}
         function LoadCloud() { return Promise.resolve("noData"); }
         function InitPlayer() { return Promise.resolve("noData"); }
-        function Review() {}
-        function PromptShow() {}
-        function InitLeaderboards() {}
-        function GetLeaderboardScores() {}
-        function SetLeaderboardScores() {}
-        function ConsumePurchase() {}
-        function ConsumePurchases() {}
 
-        try {
-            const script = document.createElement("script");
-            script.src = loaderUrl;
-            script.onload = () => {
-                StartUnityInstance = function () {
-                    createUnityInstance(canvas, config, (progress) => {
-                        spinner.style.display = "none";
-                        progressBarEmpty.style.display = "";
-                        progressBarFull.style.width = `${100 * progress}%`;
-                    }).then((unityInstance) => {
-                        myGameInstance = unityInstance;
-                        loadingCover.style.display = "none";
-                    }).catch((message) => {
-                        console.error("Unity loading error:", message);
-                    });
-                };
-                StartUnityInstance();
-            };
-            document.body.appendChild(script);
-        } catch (error) {
-            console.error("Initialization error:", error);
-        }
+        // Start Unity
+        const script = document.createElement("script");
+        script.src = loaderUrl;
+        script.onload = () => {
+            createUnityInstance(canvas, config, (progress) => {
+                spinner.style.display = "none";
+                document.querySelector("#unity-progress-bar-empty").style.display = "";
+                progressBarFull.style.width = `${100 * progress}%`;
+            }).then((unityInstance) => {
+                myGameInstance = unityInstance;
+                loadingCover.style.display = "none";
+            });
+        };
+        document.body.appendChild(script);
 
         function InitGame() {
-            try {
-                console.log('Init Game Success (Ads Disabled)');
-                initGame = true;
-                // The following logic is disabled to prevent the game from attempting 
-                // to call the "OpenFullAd" function in the C# Unity code.
-                /*
-                if (nowFullAdOpen === true && myGameInstance != null) {
-                    myGameInstance.SendMessage('YandexGame', 'OpenFullAd');
-                }
-                */
-            } catch (error) {
-                console.error("InitGame error:", error);
-            }
+            console.log('Game initialized with Ad-Block.');
+            // Stop the game from auto-opening ads on start
+            nowFullAdOpen = false;
         }
 
-        window.addEventListener("unhandledrejection", function(event) {
-            event.preventDefault();
-        });
+        // Global error bypass
+        window.addEventListener("unhandledrejection", (e) => e.preventDefault());
     </script>
 </body>
 </html>
