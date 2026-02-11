@@ -4,98 +4,40 @@
     <meta charset="utf-8"/>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-    <title>Gravity Mod</title>
+    <link rel="stylesheet" href="./style.css"/>
 
     <style>
-        /* CSS to center everything and make it look official */
-        html, body {
-            padding: 0;
-            margin: 0;
-            overflow: hidden;
-            background-color: #1a1a1a; /* Dark background like GMod */
-            color: white;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            height: 100%;
-            width: 100%;
-        }
-
+        /* Remove focus outline and margins */
         canvas:focus {
             outline: none;
         }
 
-        #unity-container {
-            width: 100%;
-            height: 100%;
-            position: absolute;
-        }
-
-        #loading-cover {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: #232323;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 10;
-        }
-
-        #unity-loading-bar {
-            width: 250px;
-            text-align: center;
-        }
-
-        #unity-logo img {
-            max-width: 150px;
-            margin-bottom: 20px;
-        }
-
-        #unity-progress-bar-empty {
-            width: 100%;
-            height: 12px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            margin-top: 15px;
+        html, body {
+            padding: 0;
+            margin: 0;
             overflow: hidden;
-            display: none; /* Shown via JS when loading starts */
-        }
-
-        #unity-progress-bar-full {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: rgba(0,0,0,0);
             height: 100%;
-            background: #00e5ff; /* Cyan color */
-            width: 0%;
-            transition: width 0.2s;
-        }
-
-        .spinner {
-            border: 4px solid rgba(255, 255, 255, 0.1);
-            border-left-color: #00e5ff;
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 10px auto;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body class="dark">
-    <div id="unity-container">
+    <div id="unity-container" class="unity-desktop">
         <canvas id="unity-canvas" tabindex="-1"></canvas>
     </div>
-
     <div id="loading-cover">
         <div id="unity-loading-bar">
-            <div id="unity-logo"><img src="newicon.png"/></div>
-            <div class="spinner"></div>
-            <div id="unity-progress-bar-empty">
+            <div id="unity-logo"><img src="gp.png"/></div>
+            <div id="unity-progress-bar-empty" style="display: none;">
                 <div id="unity-progress-bar-full"></div>
             </div>
+            <div class="spinner"></div>
         </div>
     </div>
 
@@ -112,72 +54,90 @@
             productVersion: "1.0.0.0"
         };
 
+        const container = document.querySelector("#unity-container");
         const canvas = document.querySelector("#unity-canvas");
         const loadingCover = document.querySelector("#loading-cover");
         const progressBarEmpty = document.querySelector("#unity-progress-bar-empty");
         const progressBarFull = document.querySelector("#unity-progress-bar-full");
         const spinner = document.querySelector('.spinner');
 
+        if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+            container.className = "unity-mobile";
+        }
+
+        loadingCover.style.background = "url('background.gif') center / cover";
+
+        // Prevent right-click menu
+        document.addEventListener('contextmenu', event => event.preventDefault());
+
+        function FocusGame() {
+            window.focus();
+            canvas.focus();
+        }
+
+        window.addEventListener('pointerdown', FocusGame);
+        window.addEventListener('touchstart', FocusGame);
+
         let myGameInstance = null;
 
-        // --- THE "AD-SKIPPER" LOGIC ---
-        // This stops the game from freezing by telling Unity the ad ended immediately
+        // --- ANTI-FREEZE & AD REMOVAL BYPASS ---
+        // These functions spoof the SDK responses so the game never waits.
+        
         function FullAdShow() { 
-            console.log("Ad Blocked: Telling Unity to resume."); 
-            if (myGameInstance) {
+            console.log("Interstitial ad bypassed.");
+            if(myGameInstance) {
+                myGameInstance.SendMessage('YandexGame', 'OpenFullAd'); // Tell game it started
                 setTimeout(() => {
-                    myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
-                }, 150); // 150ms delay prevents the engine from locking up
+                    myGameInstance.SendMessage('YandexGame', 'CloseFullAd'); // Tell game it finished
+                }, 100);
             }
         }
 
-        function RewardedShow(id) { 
-            console.log("Reward Ad Blocked: Unlocking reward ID " + id); 
-            if (myGameInstance) {
-                setTimeout(() => {
-                    myGameInstance.SendMessage('YandexGame', 'RewardIndexed', id);
-                    myGameInstance.SendMessage('YandexGame', 'CloseFullAd');
-                }, 150);
+        function RewardedShow() { 
+            console.log("Rewarded ad bypassed. Granting reward.");
+            if(myGameInstance) {
+                myGameInstance.SendMessage('YandexGame', 'RewardReceived', 1);
+                myGameInstance.SendMessage('YandexGame', 'CloseRewardedAd');
             }
         }
 
-        // --- SDK DUMMY REPLACEMENTS ---
-        let environmentData = { language: "en", isDesktop: true, browser: "Chrome" };
-        let cloudSaves = 'noData', paymentsData = 'none', playerData = 'noData';
-        function GetPayments() { return Promise.resolve("none"); }
-        function SaveCloud() { }
+        // Dummy functions to prevent errors
+        function SaveCloud() {}
         function LoadCloud() { return Promise.resolve("noData"); }
         function InitPlayer() { return Promise.resolve("noData"); }
-        function StickyAdActivity() { }
-        function Review() { }
-        function PromptShow() { }
-        function InitLeaderboards() { }
+        function StickyAdActivity() {}
+        function Review() {}
+        function PromptShow() {}
+        function InitLeaderboards() {}
+        function GetLeaderboardScores() {}
+        function SetLeaderboardScores() {}
+        function ConsumePurchase() {}
+        function ConsumePurchases() {}
+        function GetPayments() { return Promise.resolve("none"); }
 
-        // --- BOOTING UNITY ---
+        // Start Unity
         const script = document.createElement("script");
         script.src = loaderUrl;
         script.onload = () => {
             createUnityInstance(canvas, config, (progress) => {
                 spinner.style.display = "none";
-                progressBarEmpty.style.display = "block";
+                progressBarEmpty.style.display = "";
                 progressBarFull.style.width = `${100 * progress}%`;
             }).then((unityInstance) => {
                 myGameInstance = unityInstance;
                 loadingCover.style.display = "none";
             }).catch((message) => {
-                console.error("Unity Error: ", message);
+                console.error("Unity Load Error:", message);
             });
         };
         document.body.appendChild(script);
 
         function InitGame() {
-            console.log('Gravity Mod Loaded Successfully.');
+            console.log('Ads disabled, game instance active.');
         }
 
-        // Lock context menu
-        document.addEventListener('contextmenu', e => e.preventDefault());
-        // Handle rejection errors silently
-        window.addEventListener("unhandledrejection", e => e.preventDefault());
+        // Global error handler to prevent crashing on missing SDK variables
+        window.addEventListener("unhandledrejection", (event) => event.preventDefault());
     </script>
 </body>
 </html>
